@@ -1,20 +1,183 @@
-// Cloudflare Workers - 网盘解析器
-// 支持: 小飞机网盘(feijipan.com) | 蓝奏云优享版(ilanzou.com) | 蓝奏云(lanzou*.com)
+// Cloudflare Workers - 网盘解析脚本
+// 支持: 阿里云盘(alipan.com) | 小飞机网盘(feijipan.com) | 蓝奏云优享版(ilanzou.com) | 蓝奏云(lanzou*.com) | 夸克网盘(quark.cn) | UC网盘(drive.uc.cn)
 
-// ============================== 配置 ==============================
-const CONFIG = {
-    cache: false,          // 文件链接缓存 (Workers KV 可用时启用)
-    cacheexpired: 2000,   // 缓存时间（秒）
-    foldercache: false,   // 缓存文件夹参数
 
-    // 缓存功能暂未实现KV绑定
-
-    "auto-switch": true,  // 自动切换获取方式 (pc/mobile)
-    mode: "pc",           // 默认请求方式 (pc/mobile)
-    "redirect-url": false  // 重定向下载(单文件)：true=302重定向，false=返回JSON
+const cookieCache = {
+    aliyun: { value: null, timestamp: 0 },
+    quark: { value: null, timestamp: 0 },
+    uc: { value: null, timestamp: 0 }
 };
 
-// ============================== AES-128-ECB工具 ==============================
+// Cookie 有效期：2小时
+const COOKIE_MAX_AGE = 2 * 60 * 60 * 1000;
+
+// ============================== Cookie 管理类 ==============================
+class CookieManager {
+    constructor(type, envValue) {
+        this.type = type;
+        this.envValue = envValue;
+    }
+
+    getValidCookie() {
+        const now = Date.now();
+        const cached = cookieCache[this.type];
+        
+        
+        if (cached.value && (now - cached.timestamp) < COOKIE_MAX_AGE) {
+            const remaining = COOKIE_MAX_AGE - (now - cached.timestamp);
+            const remainingMinutes = Math.floor(remaining / 60000);
+            console.log(`[${this.type}] 使用缓存的 Cookie，剩余有效期: ${remainingMinutes}分钟`);
+            return {
+                value: cached.value,
+                isCached: true,
+                expired: false,
+                remainingTime: remaining
+            };
+        }
+        
+        if (this.envValue) {
+            cookieCache[this.type] = {
+                value: this.envValue,
+                timestamp: now
+            };
+            console.log(`[${this.type}] Cookie 已更新，新的2小时有效期开始计时`);
+            return {
+                value: this.envValue,
+                isCached: false,
+                expired: false,
+                remainingTime: COOKIE_MAX_AGE
+            };
+        }
+        
+        return {
+            value: null,
+            isCached: false,
+            expired: true,
+            remainingTime: 0
+        };
+    }
+
+    invalidate() {
+        cookieCache[this.type] = { value: null, timestamp: 0 };
+        console.log(`[${this.type}] Cookie 已被标记为失效`);
+    }
+
+
+    getStatus() {
+        const cached = cookieCache[this.type];
+        const now = Date.now();
+        
+        if (!this.envValue) {
+            return {
+                configured: false,
+                valid: false,
+                message: '未配置环境变量'
+            };
+        }
+        
+        if (!cached.value) {
+            return {
+                configured: true,
+                valid: true,
+                cached: false,
+                message: '已配置，尚未使用（将在首次请求时激活2小时有效期）'
+            };
+        }
+        
+        const age = now - cached.timestamp;
+        const remaining = COOKIE_MAX_AGE - age;
+        
+        if (remaining > 0) {
+            const remainingMinutes = Math.floor(remaining / 60000);
+            const remainingSeconds = Math.floor((remaining % 60000) / 1000);
+            return {
+                configured: true,
+                valid: true,
+                cached: true,
+                age: Math.floor(age / 1000),
+                remaining: remainingMinutes * 60 + remainingSeconds,
+                message: `Cookie 有效，剩余时间: ${remainingMinutes}分${remainingSeconds}秒`
+            };
+        } else {
+            return {
+                configured: true,
+                valid: false,
+                cached: true,
+                expired: true,
+                age: Math.floor(age / 1000),
+                message: 'Cookie 已过期（超过2小时），请重新配置'
+            };
+        }
+    }
+}
+
+// ============================== cookie配置获取 ==============================
+function getConfig(env) {
+    const defaults = {
+        // 通用配置
+        cache: false,
+        cacheexpired: 2000,
+        foldercache: false,
+        "auto-switch": true,
+        mode: "pc",
+        "redirect-url": false,
+        
+        // 阿里云盘
+        aliyun: {
+            enabled: true,
+            cookie: "",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
+        
+        // 夸克网盘
+        quark: {
+            enabled: true,
+            cookie: "",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch"
+        },
+        
+        // UC网盘
+        uc: {
+            enabled: true,
+            cookie: "",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+    };
+
+    // 获取变量
+    return {
+        // 通用配置
+        cache: env.CACHE === 'true' || defaults.cache,
+        cacheexpired: parseInt(env.CACHE_EXPIRED) || defaults.cacheexpired,
+        foldercache: env.FOLDER_CACHE === 'true' || defaults.foldercache,
+        "auto-switch": env.AUTO_SWITCH !== 'false',
+        mode: env.MODE || defaults.mode,
+        "redirect-url": env.REDIRECT_URL === 'true' || defaults["redirect-url"],
+        
+        // 阿里云盘
+        aliyun: {
+            enabled: env.ALIYUN_ENABLED !== 'false',
+            cookie: env.ALIYUN_COOKIE || defaults.aliyun.cookie,
+            userAgent: env.ALIYUN_USER_AGENT || defaults.aliyun.userAgent
+        },
+        
+        // 夸克网盘
+        quark: {
+            enabled: env.QK_ENABLED !== 'false',
+            cookie: env.QK_COOKIE || defaults.quark.cookie,
+            userAgent: env.QK_USER_AGENT || defaults.quark.userAgent
+        },
+        
+        // UC网盘
+        uc: {
+            enabled: env.UC_ENABLED !== 'false',
+            cookie: env.UC_COOKIE || defaults.uc.cookie,
+            userAgent: env.UC_USER_AGENT || defaults.uc.userAgent
+        }
+    };
+}
+
+// ============================== AES-128-ECB函数工具 ==============================
 class AES128ECB {
     constructor(key) {
         const encoder = new TextEncoder();
@@ -216,7 +379,6 @@ function getTimestamp() {
     return Date.now();
 }
 
-// ============================== acw_sc_v2 生成 ==============================
 function acwScV2Simple(arg1) {
     const posList = [15,35,29,24,33,16,1,38,10,9,19,31,40,27,22,23,25,13,6,11,39,18,20,8,14,21,32,26,2,30,7,4,17,5,3,28,34,37,12,36];
     const mask = '3000176000856006061501533003690027800375';
@@ -245,7 +407,1005 @@ function acwScV2Simple(arg1) {
     return result;
 }
 
-// ============================== 小飞机网盘解析器 ==============================
+function formatFileSize(size) {
+    try {
+        size = parseInt(size);
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let unitIndex = 0;
+        let fileSize = parseFloat(size);
+        
+        while (fileSize >= 1024 && unitIndex < units.length - 1) {
+            fileSize /= 1024;
+            unitIndex++;
+        }
+        
+        return `${fileSize.toFixed(2)} ${units[unitIndex]}`;
+    } catch {
+        return "未知大小";
+    }
+}
+
+function formatDuration(ms) {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}分${seconds}秒`;
+}
+
+// ============================== 阿里云盘解析器 ==============================
+class AliyunPanParser {
+    constructor(config) {
+        this.config = config;
+        this.cookieManager = new CookieManager('aliyun', config.aliyun.cookie);
+        this.userAgent = config.aliyun.userAgent;
+        this.apiBase = 'https://api.aliyundrive.com';
+        this.userDriveId = null;
+        this.cachedTokens = {};
+    }
+
+    async parse(shareUrl, password = '') {
+        try {
+            // 检查是否启用
+            if (!this.config.aliyun.enabled) {
+                return { code: 503, msg: '阿里云盘解析已禁用', success: false, data: null };
+            }
+
+            const cookieStatus = this.cookieManager.getValidCookie();
+            
+            if (!cookieStatus.value) {
+                return { 
+                    code: 401, 
+                    msg: '阿里云盘 Authorization Token 未配置 (ALIYUN_COOKIE)', 
+                    success: false, 
+                    data: null 
+                };
+            }
+
+            if (cookieStatus.expired) {
+                return {
+                    code: 401,
+                    msg: '阿里云盘 Cookie 已过期（超过2小时），请重新配置 ALIYUN_COOKIE',
+                    success: false,
+                    data: {
+                        expired: true,
+                        hint: 'Cookie 有效期为2小时，从配置完成时开始计时'
+                    }
+                };
+            }
+
+            this.authToken = cookieStatus.value;
+            if (!this.authToken.startsWith('Bearer ')) {
+                this.authToken = 'Bearer ' + this.authToken;
+            }
+
+            // 初始化请求头
+            this.baseHeaders = {
+                'User-Agent': this.userAgent,
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Content-Type': 'application/json;charset=UTF-8',
+                'Origin': 'https://www.alipan.com',
+                'Referer': 'https://www.alipan.com/',
+                'X-Canary': 'client=windows,app=adrive,version=v6.0.0',
+                'Authorization': this.authToken
+            };
+
+            // 提取分享信息
+            const { shareId, extractedPwd } = this.extractShareInfo(shareUrl);
+            if (!shareId) {
+                return { code: 400, msg: '无法解析阿里云盘分享链接', success: false, data: null };
+            }
+
+            const pwd = password || extractedPwd;
+
+            const shareInfo = await this.getShareInfo(shareId);
+            if (!shareInfo) {
+                return { code: 404, msg: '获取分享信息失败，链接可能已失效', success: false, data: null };
+            }
+
+            // 获取share_token
+            const shareToken = await this.getShareToken(shareId, pwd);
+            if (!shareToken) {
+                return { 
+                    code: 401, 
+                    msg: '获取访问令牌失败' + (shareInfo.share_pwd ? '，需要正确的分享密码' : '，Cookie可能已失效'), 
+                    success: false, 
+                    data: null 
+                };
+            }
+
+            // 获取文件列表
+            const files = await this.listShareFiles(shareId, shareToken);
+            if (!files || files.length === 0) {
+                return { code: 404, msg: '分享中没有文件，可能是Cookie失效或分享链接失效，请检查Cookie是否失效', success: false, data: null };
+            }
+
+            const fileList = files.filter(f => f.type === 'file');
+            
+            if (fileList.length === 0) {
+                return { code: 404, msg: '没有可下载的文件（可能都是文件夹）', success: false, data: null };
+            }
+
+            const driveId = await this.getDriveId();
+            if (!driveId) {
+                this.cookieManager.invalidate();
+                return { 
+                    code: 401, 
+                    msg: '获取用户信息失败，Cookie 可能已过期，请重新配置 ALIYUN_COOKIE', 
+                    success: false, 
+                    data: { expired: true }
+                };
+            }
+
+            const results = [];
+            for (const fileInfo of fileList) {
+                const fileName = fileInfo.name || '未知文件';
+                const fileId = fileInfo.file_id;
+                
+                // 保存到网盘
+                const newFileId = await this.saveToMyDrive(shareId, fileId, shareToken);
+                if (!newFileId) {
+                    continue;
+                }
+                
+                // 获取下载链接
+                const downloadUrl = await this.getDownloadUrl(driveId, newFileId);
+                if (downloadUrl) {
+                    results.push({
+                        file_id: fileId,
+                        file_name: fileName,
+                        file_size: formatFileSize(fileInfo.size || 0),
+                        download_url: downloadUrl,
+                        drive_id: driveId,
+                        new_file_id: newFileId
+                    });
+                }
+            }
+
+            if (results.length === 0) {
+                return { code: 502, msg: '获取下载链接失败，所有文件处理失败', success: false, data: null };
+            }
+
+            const isSingleFile = results.length === 1;
+            const responseData = isSingleFile ? results[0] : {
+                file_count: results.length,
+                files: results
+            };
+
+            const remainingTime = cookieStatus.remainingTime;
+            
+            return {
+                code: 200,
+                msg: '解析成功',
+                success: true,
+                shareKey: 'al:' + shareId,
+                cookie_status: {
+                    valid: true,
+                    remaining_time: formatDuration(remainingTime),
+                    remaining_seconds: Math.floor(remainingTime / 1000)
+                },
+                data: responseData
+            };
+
+        } catch (e) {
+            return { code: 500, msg: '解析失败: ' + e.message, success: false, data: null };
+        }
+    }
+
+    extractShareInfo(shareUrl) {
+        if (!shareUrl.startsWith('http://') && !shareUrl.startsWith('https://')) {
+            shareUrl = 'https://' + shareUrl;
+        }
+
+        try {
+            shareUrl = decodeURIComponent(shareUrl);
+        } catch (e) {
+        }
+
+        const patterns = [
+            /https?:\/\/(?:www\.)?alipan\.com\/s\/([a-zA-Z0-9]+)(?:\?.*pwd=([a-zA-Z0-9]+))?/i,
+            /https?:\/\/(?:www\.)?aliyundrive\.com\/s\/([a-zA-Z0-9]+)(?:\?.*pwd=([a-zA-Z0-9]+))?/i,
+            /\/s\/([a-zA-Z0-9]+)(?:\?.*pwd=([a-zA-Z0-9]+))?/i,
+        ];
+
+        for (const pattern of patterns) {
+            const match = shareUrl.match(pattern);
+            if (match) {
+                return {
+                    shareId: match[1],
+                    extractedPwd: match[2] || null
+                };
+            }
+        }
+
+        return { shareId: null, extractedPwd: null };
+    }
+
+    async getShareInfo(shareId) {
+        const url = `${this.apiBase}/adrive/v3/share_link/get_share_by_anonymous`;
+        const data = { share_id: shareId };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    ...this.baseHeaders,
+                    'Authorization': undefined
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (response.status === 200) {
+                return await response.json();
+            }
+        } catch (e) {
+            console.error('获取分享信息失败:', e);
+        }
+
+        return null;
+    }
+
+    async getShareToken(shareId, password = '') {
+        const cacheKey = `${shareId}_${password || 'no_pwd'}`;
+        if (this.cachedTokens[cacheKey]) {
+            return this.cachedTokens[cacheKey];
+        }
+
+        const url = `${this.apiBase}/v2/share_link/get_share_token`;
+        const data = { share_id: shareId };
+        if (password) {
+            data.share_pwd = password;
+        }
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    ...this.baseHeaders,
+                    'Authorization': undefined
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (response.status === 200) {
+                const result = await response.json();
+                const shareToken = result.share_token;
+                if (shareToken) {
+                    this.cachedTokens[cacheKey] = shareToken;
+                    return shareToken;
+                }
+            }
+        } catch (e) {
+            console.error('获取share_token失败:', e);
+        }
+
+        return null;
+    }
+
+    async listShareFiles(shareId, shareToken) {
+        const url = `${this.apiBase}/adrive/v3/file/list`;
+        const data = {
+            share_id: shareId,
+            parent_file_id: 'root',
+            limit: 100,
+            order_by: 'name',
+            order_direction: 'ASC'
+        };
+
+        const headers = {
+            ...this.baseHeaders,
+            'X-Share-Token': shareToken
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(data)
+            });
+
+            if (response.status === 200) {
+                const result = await response.json();
+                return result.items || [];
+            }
+        } catch (e) {
+            console.error('获取文件列表失败:', e);
+        }
+
+        return [];
+    }
+
+    async getDriveId() {
+        if (this.userDriveId) {
+            return this.userDriveId;
+        }
+
+        const url = `${this.apiBase}/v2/user/get`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: this.baseHeaders,
+                body: JSON.stringify({})
+            });
+
+            if (response.status === 200) {
+                const result = await response.json();
+                
+                // 尝试不同的drive_id字段
+                for (const field of ['default_drive_id', 'drive_id', 'backup_drive_id']) {
+                    if (result[field]) {
+                        this.userDriveId = result[field];
+                        break;
+                    }
+                }
+                
+                if (!this.userDriveId && result.user_id) {
+                    this.userDriveId = result.user_id;
+                }
+            } else if (response.status === 401) {
+                // Token 无效
+                this.cookieManager.invalidate();
+            }
+        } catch (e) {
+            console.error('获取drive_id失败:', e);
+        }
+
+        return this.userDriveId;
+    }
+
+    async saveToMyDrive(shareId, fileId, shareToken) {
+        const driveId = await this.getDriveId();
+        if (!driveId) {
+            return null;
+        }
+
+        const url = `${this.apiBase}/adrive/v2/file/copy`;
+        const data = {
+            file_id: fileId,
+            to_parent_file_id: 'root',
+            to_drive_id: driveId,
+            share_id: shareId,
+            auto_rename: true
+        };
+
+        const headers = {
+            ...this.baseHeaders,
+            'X-Share-Token': shareToken
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(data)
+            });
+
+            if (response.status === 200 || response.status === 201) {
+                const result = await response.json();
+                
+                const keyPaths = [['file_id'], ['body', 'file_id'], ['data', 'file_id']];
+                for (const keyPath of keyPaths) {
+                    let temp = result;
+                    for (const key of keyPath) {
+                        if (temp && typeof temp === 'object' && key in temp) {
+                            temp = temp[key];
+                        } else {
+                            temp = null;
+                            break;
+                        }
+                    }
+                    if (temp && typeof temp === 'string' && temp.length > 10) {
+                        return temp;
+                    }
+                }
+            } else if (response.status === 401) {
+                this.cookieManager.invalidate();
+            }
+        } catch (e) {
+            console.error('保存到网盘失败:', e);
+        }
+
+        return null;
+    }
+
+    async getDownloadUrl(driveId, fileId) {
+        const url = `${this.apiBase}/v2/file/get_download_url`;
+        const data = {
+            drive_id: driveId,
+            file_id: fileId
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: this.baseHeaders,
+                body: JSON.stringify(data)
+            });
+
+            if (response.status === 200) {
+                const result = await response.json();
+                if (result.url) {
+                    return result.url;
+                } else if (result.code === 'AccessTokenInvalid') {
+                    this.cookieManager.invalidate();
+                }
+            } else if (response.status === 401) {
+                this.cookieManager.invalidate();
+            }
+        } catch (e) {
+            console.error('获取下载链接失败:', e);
+        }
+
+        return null;
+    }
+}
+
+// ============================== 夸克网盘解析器 ==============================
+class QuarkParser {
+    constructor(config) {
+        this.config = config;
+        this.cookieManager = new CookieManager('quark', config.quark.cookie);
+        this.userAgent = config.quark.userAgent;
+        this.baseHeaders = null;
+        this.validCookie = null; // 验证cookie
+    }
+
+    async parse(shareUrl, passcode = '') {
+        try {
+            if (!this.config.quark.enabled) {
+                return { code: 503, msg: '夸克网盘解析已禁用', success: false, data: null };
+            }
+
+            // 获取Cookie
+            const cookieStatus = this.cookieManager.getValidCookie();
+            
+            if (!cookieStatus.value) {
+                return { 
+                    code: 401, 
+                    msg: '夸克网盘 Cookie 未配置 (QK_COOKIE)', 
+                    success: false, 
+                    data: null 
+                };
+            }
+
+            if (cookieStatus.expired) {
+                return {
+                    code: 401,
+                    msg: '夸克网盘 Cookie 已过期（超过2小时），请重新配置 QK_COOKIE',
+                    success: false,
+                    data: {
+                        expired: true,
+                        hint: 'Cookie 有效期为2小时，从配置完成时开始计时'
+                    }
+                };
+            }
+
+            this.validCookie = cookieStatus.value;
+
+            // 初始化请求头
+            this.baseHeaders = {
+                'User-Agent': this.userAgent,
+                'Content-Type': 'application/json',
+                'Cookie': this.validCookie,
+                'Referer': 'https://pan.quark.cn/',
+                'Origin': 'https://pan.quark.cn',
+                'Accept': 'application/json, text/plain, */*'
+            };
+
+            // 提取分享ID
+            const pwdId = this.extractPwdId(shareUrl);
+            if (!pwdId) {
+                return { code: 400, msg: '无效的夸克网盘分享链接', success: false, data: null };
+            }
+
+            // 获取分享 token
+            const stoken = await this.getShareToken(pwdId, passcode);
+            if (!stoken) {
+                return { 
+                    code: 401, 
+                    msg: '获取分享令牌失败，Cookie 可能已过期或无效', 
+                    success: false, 
+                    data: { expired: true }
+                };
+            }
+
+            // 获取文件列表
+            const fileList = await this.getShareDetail(pwdId, stoken);
+            if (!fileList || fileList.length === 0) {
+                return { code: 404, msg: '分享中没有文件，可能是Cookie失效或分享链接失效，请检查Cookie是否失效', success: false, data: null };
+            }
+
+            const files = fileList.filter(f => f.file === true || f.obj_category !== '');
+            
+            if (files.length === 0) {
+                return { code: 404, msg: '没有可下载的文件（可能都是文件夹）', success: false, data: null };
+            }
+
+            // 提取文件ID
+            const fids = files.map(f => f.fid);
+
+            // 批量获取下载链接
+            const downloadData = await this.getDownloadLinks(fids);
+            
+            if (!downloadData || downloadData.length === 0) {
+                return { code: 502, msg: '获取下载链接失败', success: false, data: null };
+            }
+
+            // 构建响应数据
+            const fileMap = {};
+            files.forEach(f => {
+                fileMap[f.fid] = f;
+            });
+
+            const results = [];
+            for (const item of downloadData) {
+                const fid = item.fid;
+                const fileInfo = fileMap[fid];
+                if (fileInfo) {
+                    results.push({
+                        file_id: fid,
+                        file_name: fileInfo.file_name || '未知文件名',
+                        file_size: formatFileSize(fileInfo.size || 0),
+                        download_url: item.download_url || '',
+                        fid: fileInfo.fid,
+                        pdir_fid: fileInfo.pdir_fid
+                    });
+                }
+            }
+
+            const isSingleFile = results.length === 1;
+            const responseData = isSingleFile ? results[0] : {
+                file_count: results.length,
+                files: results
+            };
+
+            const remainingTime = cookieStatus.remainingTime;
+
+            return {
+                code: 200,
+                msg: '解析成功',
+                success: true,
+                shareKey: 'qk:' + pwdId,
+                cookie_status: {
+                    valid: true,
+                    remaining_time: formatDuration(remainingTime),
+                    remaining_seconds: Math.floor(remainingTime / 1000)
+                },
+                data: responseData
+            };
+
+        } catch (e) {
+            return { code: 500, msg: '解析失败: ' + e.message, success: false, data: null };
+        }
+    }
+
+    extractPwdId(url) {
+        const match = url.match(/pan\.quark\.cn\/s\/([a-zA-Z0-9]+)/i);
+        return match ? match[1] : null;
+    }
+
+    async getShareToken(pwdId, passcode = '') {
+        const url = 'https://drive-pc.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc';
+        
+        const body = {
+            pwd_id: pwdId,
+            passcode: passcode
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: this.baseHeaders,
+                body: JSON.stringify(body)
+            });
+
+            const result = await response.json();
+            
+            if (result.code === 31001 || result.code === 401) {
+                this.cookieManager.invalidate();
+                return null;
+            }
+            
+            if (result.code === 0 && result.data && result.data.stoken) {
+                return result.data.stoken;
+            }
+            
+            return null;
+        } catch (e) {
+            console.error('获取 share token 失败:', e);
+            return null;
+        }
+    }
+
+    async getShareDetail(pwdId, stoken) {
+        const params = new URLSearchParams({
+            pr: 'ucpro',
+            fr: 'pc',
+            pwd_id: pwdId,
+            stoken: stoken,
+            pdir_fid: '0',
+            force: '0',
+            _page: '1',
+            _size: '50',
+            _sort: 'file_type:asc,updated_at:desc'
+        });
+
+        const url = `https://drive-pc.quark.cn/1/clouddrive/share/sharepage/detail?${params.toString()}`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: this.baseHeaders
+            });
+
+            const result = await response.json();
+            
+            if (result.code === 31001 || result.code === 401) {
+                this.cookieManager.invalidate();
+                return [];
+            }
+            
+            if (result.code === 0 && result.data && Array.isArray(result.data.list)) {
+                return result.data.list;
+            }
+            
+            return [];
+        } catch (e) {
+            console.error('获取文件列表失败:', e);
+            return [];
+        }
+    }
+
+    async getDownloadLinks(fids) {
+        const url = 'https://drive-pc.quark.cn/1/clouddrive/file/download?pr=ucpro&fr=pc';
+        
+        const batchSize = 15;
+        const allResults = [];
+
+        for (let i = 0; i < fids.length; i += batchSize) {
+            const batch = fids.slice(i, i + batchSize);
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: this.baseHeaders,
+                    body: JSON.stringify({ fids: batch })
+                });
+
+                const result = await response.json();
+                
+                if (result.code === 31001 || result.code === 401) {
+                    this.cookieManager.invalidate();
+                    throw new Error('Cookie 已失效，请重新配置');
+                }
+                
+                if (result.code === 0 && Array.isArray(result.data)) {
+                    allResults.push(...result.data);
+                }
+            } catch (e) {
+                console.error(`获取第 ${Math.floor(i / batchSize) + 1} 批下载链接失败:`, e);
+            }
+        }
+
+        return allResults;
+    }
+
+    getValidCookie() {
+        return this.validCookie;
+    }
+}
+
+// ============================== UC网盘解析器 ==============================
+class UCParser {
+    constructor(config) {
+        this.config = config;
+        this.cookieManager = new CookieManager('uc', config.uc.cookie);
+        this.userAgent = config.uc.userAgent;
+        this.apiBase = 'https://pc-api.uc.cn/1/clouddrive';
+        this.baseHeaders = null;
+    }
+
+    async parse(shareUrl, passcode = '') {
+        try {
+            if (!this.config.uc.enabled) {
+                return { code: 503, msg: 'UC网盘解析已禁用', success: false, data: null };
+            }
+
+            // 获取Cookie
+            const cookieStatus = this.cookieManager.getValidCookie();
+            
+            if (!cookieStatus.value) {
+                return { 
+                    code: 401, 
+                    msg: 'UC网盘 Cookie 未配置 (UC_COOKIE)', 
+                    success: false, 
+                    data: null 
+                };
+            }
+
+            if (cookieStatus.expired) {
+                return {
+                    code: 401,
+                    msg: 'UC网盘 Cookie 已过期（超过2小时），请重新配置 UC_COOKIE',
+                    success: false,
+                    data: {
+                        expired: true,
+                        hint: 'Cookie 有效期为2小时，从配置完成时开始计时'
+                    }
+                };
+            }
+
+            const cookies = this.parseCookieString(cookieStatus.value);
+            const formattedCookie = this.formatCookieString(cookieStatus.value);
+            
+            if (!cookies.ctoken) {
+                return {
+                    code: 401,
+                    msg: 'UC网盘 Cookie 缺少必要的 ctoken 字段',
+                    success: false,
+                    data: null
+                };
+            }
+
+            // 初始化请求头
+            this.baseHeaders = {
+                'User-Agent': this.userAgent,
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Content-Type': 'application/json;charset=UTF-8',
+                'Cookie': formattedCookie,
+                'Origin': 'https://drive.uc.cn',
+                'Referer': 'https://drive.uc.cn/',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-site',
+                'X-CToken': cookies.ctoken
+            };
+
+            // 提取分享key
+            const shareKey = this.extractShareKey(shareUrl);
+            if (!shareKey) {
+                return { code: 400, msg: '无效的UC网盘分享链接', success: false, data: null };
+            }
+
+            // 获取 stoken
+            const stoken = await this.getShareToken(shareKey, passcode, cookies);
+            if (!stoken) {
+                return { 
+                    code: 401, 
+                    msg: '获取分享令牌失败，Cookie 可能已过期或无效', 
+                    success: false, 
+                    data: { expired: true }
+                };
+            }
+
+            // 获取文件详情
+            const fileInfo = await this.getShareDetail(shareKey, passcode, stoken, cookies);
+            if (!fileInfo) {
+                return { code: 404, msg: '分享中没有文件，可能是Cookie失效或分享链接失效', success: false, data: null };
+            }
+
+            // 获取下载链接
+            const downloadUrl = await this.getDownloadUrl(fileInfo, shareKey, stoken, cookies);
+            
+            if (!downloadUrl) {
+                return { code: 502, msg: '获取下载链接失败', success: false, data: null };
+            }
+
+            const remainingTime = cookieStatus.remainingTime;
+
+            return {
+                code: 200,
+                msg: '解析成功',
+                success: true,
+                shareKey: 'uc:' + shareKey,
+                cookie_status: {
+                    valid: true,
+                    remaining_time: formatDuration(remainingTime),
+                    remaining_seconds: Math.floor(remainingTime / 1000)
+                },
+                data: {
+                    file_id: fileInfo.fid,
+                    file_name: fileInfo.file_name,
+                    file_size: formatFileSize(fileInfo.file_size || 0),
+                    download_url: downloadUrl
+                }
+            };
+
+        } catch (e) {
+            return { code: 500, msg: '解析失败: ' + e.message, success: false, data: null };
+        }
+    }
+
+    parseCookieString(cookieString) {
+        const cookies = {};
+        if (!cookieString) return cookies;
+        
+        if (cookieString.trim().startsWith('{')) {
+            try {
+                return JSON.parse(cookieString);
+            } catch (e) {
+            }
+        }
+        
+        cookieString.split(';').forEach(item => {
+            const [key, value] = item.trim().split('=');
+            if (key && value !== undefined) {
+                cookies[key.trim()] = value.trim();
+            }
+        });
+        
+        return cookies;
+    }
+
+    formatCookieString(cookieString) {
+        if (!cookieString) return '';
+        
+        if (cookieString.trim().startsWith('{')) {
+            try {
+                const cookieObj = JSON.parse(cookieString);
+                return Object.entries(cookieObj)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join('; ');
+            } catch (e) {
+                return cookieString;
+            }
+        }
+        
+        return cookieString;
+    }
+
+    extractShareKey(url) {
+        const patterns = [
+            /https?:\/\/fast\.uc\.cn\/s\/([a-zA-Z0-9]+)(?:\?.*)?/i,
+            /https?:\/\/drive\.uc\.cn\/s\/([a-zA-Z0-9]+)(?:\?.*)?/i,
+        ];
+        
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match) {
+                return match[1];
+            }
+        }
+        
+        if (/^[a-zA-Z0-9]+$/.test(url)) {
+            return url;
+        }
+        
+        return null;
+    }
+
+    async getShareToken(shareKey, passcode, cookies) {
+        const url = `${this.apiBase}/share/sharepage/token`;
+        
+        const params = new URLSearchParams({
+            entry: 'ft',
+            fr: 'pc',
+            pr: 'UCBrowser'
+        });
+
+        const body = {
+            share_for_transfer: true,
+            pwd_id: shareKey,
+            passcode: passcode || ''
+        };
+
+        try {
+            const response = await fetch(`${url}?${params.toString()}`, {
+                method: 'POST',
+                headers: this.baseHeaders,
+                body: JSON.stringify(body)
+            });
+
+            const result = await response.json();
+            
+            if (result.code === 14001 || result.code === 401) {
+                this.cookieManager.invalidate();
+                return null;
+            }
+            
+            if (result.code === 0 && result.data && result.data.stoken) {
+                return result.data.stoken;
+            }
+            
+            return null;
+        } catch (e) {
+            console.error('获取 share token 失败:', e);
+            return null;
+        }
+    }
+
+    async getShareDetail(shareKey, passcode, stoken, cookies) {
+        const url = `${this.apiBase}/transfer_share/detail`;
+        
+        const params = new URLSearchParams({
+            pwd_id: shareKey,
+            passcode: passcode || '',
+            stoken: stoken,
+            entry: 'ft',
+            fr: 'pc',
+            pr: 'UCBrowser'
+        });
+
+        try {
+            const response = await fetch(`${url}?${params.toString()}`, {
+                method: 'GET',
+                headers: this.baseHeaders
+            });
+
+            const result = await response.json();
+            
+            if (result.code === 14001 || result.code === 401) {
+                this.cookieManager.invalidate();
+                return null;
+            }
+            
+            if (result.code === 0 && result.data && Array.isArray(result.data.list) && result.data.list.length > 0) {
+                const info = result.data.list[0];
+                return {
+                    fid: info.fid,
+                    file_name: info.file_name || '未知文件',
+                    file_size: info.size || 0,
+                    share_fid_token: info.share_fid_token
+                };
+            }
+            
+            return null;
+        } catch (e) {
+            console.error('获取文件详情失败:', e);
+            return null;
+        }
+    }
+
+    async getDownloadUrl(fileInfo, shareKey, stoken, cookies) {
+        const url = `${this.apiBase}/file/download`;
+        
+        const params = new URLSearchParams({
+            entry: 'ft',
+            fr: 'pc',
+            pr: 'UCBrowser'
+        });
+
+        const body = {
+            fids: [fileInfo.fid],
+            pwd_id: shareKey,
+            stoken: stoken,
+            fids_token: [fileInfo.share_fid_token]
+        };
+
+        try {
+            const response = await fetch(`${url}?${params.toString()}`, {
+                method: 'POST',
+                headers: this.baseHeaders,
+                body: JSON.stringify(body)
+            });
+
+            const result = await response.json();
+            
+            if (result.code === 14001 || result.code === 401) {
+                this.cookieManager.invalidate();
+                return null;
+            }
+            
+            if (result.code === 0 && result.data && Array.isArray(result.data) && result.data.length > 0) {
+                return result.data[0].download_url;
+            }
+            
+            return null;
+        } catch (e) {
+            console.error('获取下载链接失败:', e);
+            return null;
+        }
+    }
+
+    getValidCookie() {
+        const cookieStatus = this.cookieManager.getValidCookie();
+        return cookieStatus.value;
+    }
+}
+
+// ============================== 小飞机解析器 ==============================
 class FeijipanParser {
     constructor(shareLinkInfo) {
         this.shareLinkInfo = shareLinkInfo;
@@ -552,12 +1712,12 @@ class IlanzouParser {
 
 // ============================== 蓝奏云解析器 ==============================
 class LanzouParser {
-    constructor() {
+    constructor(config) {
         this.mobileUA = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36';
         this.desktopUA = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36';
         this.apiDomain = 'www.lanzoui.com';
-        this.autoSwitch = CONFIG["auto-switch"];
-        this.mode = CONFIG.mode;
+        this.autoSwitch = config["auto-switch"];
+        this.mode = config.mode;
     }
 
     async parse(url, pwd = '') {
@@ -1286,11 +2446,171 @@ class LanzouParser {
     }
 }
 
-// ============================== 处理响应 ==============================
+// ============================== 响应处理工具 ==============================
 
+/**
+ * 携带请求头代理下载
+ */
+async function proxyDownload(downloadUrl, headers, filename) {
+    try {
+        // 对于UC网盘，我们需要手动处理重定向，确保请求头被正确传递
+        let currentUrl = downloadUrl;
+        let response;
+        
+        // 最多跟随3次重定向
+        for (let i = 0; i < 3; i++) {
+            response = await fetch(currentUrl, {
+                method: 'GET',
+                headers: headers,
+                redirect: 'manual' // 手动处理重定向
+            });
+            
+            if (response.status >= 300 && response.status < 400) {
+                // 处理重定向
+                const location = response.headers.get('Location');
+                if (location) {
+                    currentUrl = location;
+                    continue;
+                }
+            }
+            break;
+        }
+        
+        if (!response || !response.ok) {
+            const status = response ? response.status : '未知';
+            return new Response(`下载失败: HTTP ${status}`, {
+                status: 502,
+                headers: { 'Access-Control-Allow-Origin': '*' }
+            });
+        }
 
-function handleResponse(result, type, configRedirect) {
-    // 是否使用302重定向
+        // 获取原始响应的 headers
+        const contentType = response.headers.get('content-type') || 'application/octet-stream';
+        const contentLength = response.headers.get('content-length');
+        
+        // 构建新的响应 headers
+        const responseHeaders = new Headers({
+            'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length',
+        });
+
+        // 设置文件名（如果提供了）
+        if (filename) {
+            const encodedFilename = encodeURIComponent(filename);
+            responseHeaders.set('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
+        }
+
+        if (contentLength) {
+            responseHeaders.set('Content-Length', contentLength);
+        }
+
+        // 流式返回文件内容
+        return new Response(response.body, {
+            status: 200,
+            headers: responseHeaders
+        });
+
+    } catch (error) {
+        return new Response(`代理下载失败: ${error.message}`, {
+            status: 500,
+            headers: { 'Access-Control-Allow-Origin': '*' }
+        });
+    }
+}
+
+/**
+ * 获取阿里云盘下载所需的请求头
+ */
+function getAliyunDownloadHeaders(config) {
+    return {
+        'Referer': 'https://www.alipan.com/',
+        'User-Agent': config.aliyun.userAgent,
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'identity',
+        'Connection': 'keep-alive',
+    };
+}
+
+/**
+ * 获取夸克网盘下载所需的请求头
+ */
+function getQuarkDownloadHeaders(config, cookie) {
+    return {
+        'User-Agent': config.quark.userAgent,
+        'Cookie': cookie,
+        'Referer': 'https://pan.quark.cn/',
+        'Origin': 'https://pan.quark.cn',
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Accept-Encoding': 'identity',
+        'Connection': 'keep-alive',
+    };
+}
+
+/**
+ * 获取UC网盘下载所需的请求头
+ */
+function getUCDownloadHeaders(config, cookie) {
+    // 解析Cookie获取ctoken
+    const cookies = parseCookieString(cookie);
+    const headers = {
+        'User-Agent': config.uc.userAgent,
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Referer': 'https://drive.uc.cn/',
+        'Origin': 'https://drive.uc.cn',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+    };
+    
+    // 添加X-CToken（如果存在）
+    if (cookies.ctoken) {
+        headers['X-CToken'] = cookies.ctoken;
+    }
+    
+    // 添加Cookie（如果存在）
+    if (cookie) {
+        headers['Cookie'] = cookie;
+    }
+    
+    return headers;
+}
+
+/**
+ * 解析Cookie字符串
+ */
+function parseCookieString(cookieString) {
+    const cookies = {};
+    if (!cookieString) return cookies;
+    
+    // 尝试解析JSON格式
+    if (cookieString.trim().startsWith('{')) {
+        try {
+            return JSON.parse(cookieString);
+        } catch (e) {
+            // 继续尝试其他格式
+        }
+    }
+    
+    // 解析标准Cookie格式
+    cookieString.split(';').forEach(item => {
+        const [key, value] = item.trim().split('=');
+        if (key && value !== undefined) {
+            cookies[key.trim()] = value.trim();
+        }
+    });
+    
+    return cookies;
+}
+
+function handleResponse(result, type, configRedirect, config, isAliyun = false, isQuark = false, quarkCookie = null, isUC = false, ucCookie = null) {
     let shouldRedirect = false;
     
     if (type === 'down') {
@@ -1301,34 +2621,55 @@ function handleResponse(result, type, configRedirect) {
         shouldRedirect = configRedirect;
     }
     
-    // 检查是否可以重定向
-    const canRedirect = result.code === 200 && 
-                       result.data && 
-                       result.data.download_url && 
-                       !result.data.is_folder &&
-                       !result.data.list; // 不是文件夹列表
+    // 检查是否可以重定向或需要代理下载
+    const hasDownloadUrl = result.code === 200 && 
+                          result.data && 
+                          !result.data.files && // 不是多文件列表
+                          result.data.download_url && 
+                          !result.data.is_folder &&
+                          !result.data.list;
     
-    if (shouldRedirect && canRedirect) {
+    if (!shouldRedirect || !hasDownloadUrl) {
+        // 返回 JSON 响应
+        const corsHeaders = {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With'
+        };
+        
+        return new Response(JSON.stringify(result, null, 2), {
+            headers: corsHeaders
+        });
+    }
+
+    // 对于阿里云盘和夸克网盘，不使用 302 重定向
+    const downloadUrl = result.data.download_url;
+    const filename = result.data.file_name || 'download';
+
+    if (isAliyun) {
+        // 阿里云盘：需要代理下载，携带 Referer
+        const headers = getAliyunDownloadHeaders(config);
+        return proxyDownload(downloadUrl, headers, filename);
+    } else if (isQuark) {
+        // 夸克网盘：需要代理下载，携带 Cookie
+        const headers = getQuarkDownloadHeaders(config, quarkCookie);
+        return proxyDownload(downloadUrl, headers, filename);
+    } else if (isUC) {
+        // UC网盘：需要代理下载，携带请求头
+        const headers = getUCDownloadHeaders(config, ucCookie);
+        return proxyDownload(downloadUrl, headers, filename);
+    } else {
+        // 其他网盘（蓝奏云、飞盘云等）：可以直接 302 重定向
         return new Response(null, {
             status: 302,
             headers: {
-                'Location': result.data.download_url,
+                'Location': downloadUrl,
                 'Access-Control-Allow-Origin': '*',
                 'Cache-Control': 'no-cache'
             }
         });
     }
-    
-    const corsHeaders = {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With'
-    };
-    
-    return new Response(JSON.stringify(result, null, 2), {
-        headers: corsHeaders
-    });
 }
 
 // ============================== 主入口 ==============================
@@ -1336,7 +2677,9 @@ export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
         
-        // CORS 预检
+        const CONFIG = getConfig(env);
+        
+        // CORS
         if (request.method === 'OPTIONS') {
             return new Response(null, {
                 status: 204,
@@ -1357,7 +2700,6 @@ export default {
             });
         }
 
-        // 获取参数
         const targetUrl = url.searchParams.get('url');
         const pwd = url.searchParams.get('pwd') || '';
         const type = url.searchParams.get('type') || '';
@@ -1382,10 +2724,23 @@ export default {
         }
 
         let result;
+        let isAliyun = false;
+        let isQuark = false;
+        let isUC = false;
+        let quarkCookie = null;
+        let ucCookie = null;
+        let quarkParser = null;
+        let ucParser = null;
 
         try {
             // 路由到对应的解析器
-            if (/feijipan\.com/i.test(targetUrl)) {
+            if (/alipan\.com|aliyundrive\.com/i.test(targetUrl)) {
+                // 阿里云盘解析
+                isAliyun = true;
+                const parser = new AliyunPanParser(CONFIG);
+                result = await parser.parse(targetUrl, pwd);
+                
+            } else if (/feijipan\.com/i.test(targetUrl)) {
                 const parser = new FeijipanParser({});
                 const shareKey = parser.extractShareKey(targetUrl);
                 const parser2 = new FeijipanParser({ 
@@ -1411,8 +2766,36 @@ export default {
                 }
                 
             } else if (/(lanzou[a-z]{0,2}\.com)/i.test(targetUrl)) {
-                const parser = new LanzouParser();
+                const parser = new LanzouParser(CONFIG);
                 result = await parser.parse(targetUrl, pwd);
+                
+            } else if (/pan\.quark\.cn/i.test(targetUrl)) {
+                // 夸克网盘解析
+                isQuark = true;
+                quarkParser = new QuarkParser(CONFIG);
+                result = await quarkParser.parse(targetUrl, pwd);
+                
+                if (quarkParser) {
+                    quarkCookie = quarkParser.getValidCookie();
+                }
+
+                if (!quarkCookie && CONFIG.quark.cookie) {
+                    quarkCookie = CONFIG.quark.cookie;
+                }
+                
+            } else if (/uc\.cn/i.test(targetUrl) || /fast\.uc\.cn/i.test(targetUrl) || /drive\.uc\.cn/i.test(targetUrl)) {
+                // UC网盘解析
+                isUC = true;
+                ucParser = new UCParser(CONFIG);
+                result = await ucParser.parse(targetUrl, pwd);
+                
+                if (ucParser) {
+                    ucCookie = ucParser.getValidCookie();
+                }
+
+                if (!ucCookie && CONFIG.uc.cookie) {
+                    ucCookie = CONFIG.uc.cookie;
+                }
                 
             } else {
                 result = { 
@@ -1431,6 +2814,8 @@ export default {
                 data: null 
             };
         }
-        return handleResponse(result, type, CONFIG["redirect-url"]);
+
+        return handleResponse(result, type, CONFIG["redirect-url"], CONFIG, isAliyun, isQuark, quarkCookie, isUC, ucCookie);
     }
 };
+

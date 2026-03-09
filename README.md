@@ -33,11 +33,12 @@
 | 阿里云盘 | alipan.com / aliyundrive.com | ✅ 已支持 |
 | 夸克网盘 | pan.quark.cn | ✅ 已支持 |
 | UC网盘 | drive.uc.cn / fast.uc.cn | ✅ 已支持 |
+| 移动云盘 | yun.139.com / caiyun.139.com | ✅ 已支持 |
 | 小飞机网盘 | feijipan.com | ✅ 已支持 |
 | 蓝奏云优享版 | ilanzou.com | ✅ 已支持 |
 | 蓝奏云 | lanzou*.com | ✅ 已支持 |
 
-> **注意**：阿里云盘、夸克网盘、UC网盘需要配置cookie才能正常解析
+> **注意**：阿里云盘、夸克网盘、UC网盘、移动云盘需要配置认证信息才能正常解析
 ---
 
 ## 💡 快速部署
@@ -57,13 +58,14 @@
 
 #### 3. 配置环境变量（可选）
 
-对于需要 Cookie 认证的网盘，需要配置以下环境变量：
+对于需要认证的网盘，需要配置以下环境变量：
 
 | 变量名 | 说明 | 适用平台 |
 |--------|------|----------|
-| `ALIYUN_COOKIE` | 阿里云盘的 Authorization Token | 阿里云盘 |
+| `ALIYUN_AUTHORIZATION` | 阿里云盘的 Authorization Token | 阿里云盘 |
 | `QK_COOKIE` | 夸克网盘的 Cookie | 夸克网盘 |
 | `UC_COOKIE` | UC网盘的 Cookie | UC网盘 |
+| `MCLOUD_AUTHORIZATION` | 移动云盘的 Authorization Token | 移动云盘 |
 
 配置方法：
 1. 在 Worker 页面点击 "设置" → "变量"
@@ -131,15 +133,15 @@ GET /?url={分享链接}&pwd={密码}
 
 默认情况下，对于支持直接下载的网盘会使用 302 重定向到下载地址。
 
-#### 3. 代理下载（适用于阿里云盘、夸克网盘、UC网盘）
+#### 3. 代理下载（适用于阿里云盘、夸克网盘、UC网盘、移动云盘）
 
 ```
 GET /?url={分享链接}&pwd={密码}&type=down
 ```
 
 **说明：**
-- 对于阿里云盘、夸克网盘、UC网盘等需要特殊请求头的网盘
-- 代理下载会携带必要的请求头（如：Cookie、Referer、X-CToken 等）
+- 对于阿里云盘、夸克网盘、UC网盘、移动云盘等需要特殊请求头的网盘
+- 代理下载会携带必要的请求头（如：Cookie、Referer、X-CToken、Authorization 等）
 
 ---
 
@@ -150,7 +152,7 @@ GET /?url={分享链接}&pwd={密码}&type=down
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
 | `ALIYUN_ENABLED` | true | 是否启用阿里云盘解析 |
-| `ALIYUN_COOKIE` | - | 阿里云盘 Authorization Token |
+| `ALIYUN_AUTHORIZATION` | - | 阿里云盘 Authorization Token |
 | `ALIYUN_USER_AGENT` | - | 阿里云盘自定义 UA |
 | `QK_ENABLED` | true | 是否启用夸克网盘解析 |
 | `QK_COOKIE` | - | 夸克网盘 Cookie |
@@ -158,13 +160,16 @@ GET /?url={分享链接}&pwd={密码}&type=down
 | `UC_ENABLED` | true | 是否启用 UC 网盘解析 |
 | `UC_COOKIE` | - | UC 网盘 Cookie |
 | `UC_USER_AGENT` | - | UC 网盘自定义 UA |
+| `MCLOUD_ENABLED` | true | 是否启用移动云盘解析 |
+| `MCLOUD_AUTHORIZATION` | - | 移动云盘 Authorization Token |
+| `MCLOUD_USER_AGENT` | - | 移动云盘自定义 UA |
 | `CACHE` | false | 是否启用缓存（暂未实现） |
 | `CACHE_EXPIRED` | 2000 | 缓存过期时间（秒） |
 | `AUTO_SWITCH` | true | 自动切换平台 UA |
 | `MODE` | pc | 解析模式 |
 | `REDIRECT_URL` | false | 是否默认使用 302 重定向 |
 
-### Cookie 获取方法
+### 认证信息获取方法
 
 #### 阿里云盘
 
@@ -194,6 +199,13 @@ GET /?url={分享链接}&pwd={密码}&type=down
 - `UDRIVE_TRANSFER_SESS`
 - `ctoken`（必需，用于 X-CToken 请求头）
 - `b-user-id`
+
+#### 移动云盘
+
+1. 访问 https://yun.139.com 并登录
+2. 按 F12 打开开发者工具 → Network
+3. 刷新页面，找到任意 API 请求
+4. 复制请求头中的 `Authorization` 字段值（包含 Basic）
 
 ---
 
@@ -229,6 +241,16 @@ curl "https://your-domain.com/?url=https://drive.uc.cn/s/xxxxxx&type=json"
 curl "https://your-domain.com/?url=https://drive.uc.cn/s/xxxxxx&type=down"
 ```
 
+### 移动云盘
+
+```bash
+# JSON 返回
+curl "https://your-domain.com/?url=https://yun.139.com/shareweb/#/w/i/xxxxxx&type=json"
+
+# 代理下载
+curl "https://your-domain.com/?url=https://yun.139.com/shareweb/#/w/i/xxxxxx&type=down"
+```
+
 ### 蓝奏云
 
 ```bash
@@ -261,6 +283,7 @@ curl "https://your-domain.com/?url=https://lanzoux.com/xxxxxx"
 - **AliyunPanParser** - 阿里云盘解析器
 - **QuarkParser** - 夸克网盘解析器
 - **UCParser** - UC网盘解析器
+- **MobileCloudParser** - 移动云盘解析器
 - **FeijipanParser** - 小飞机网盘解析器
 - **IlanzouParser** - 蓝奏云优享版解析器
 - **LanzouParser** - 蓝奏云解析器

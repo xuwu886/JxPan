@@ -3444,7 +3444,7 @@ function index() {
         '\n' +
         '        <!-- 底部 -->\n' +
         '        <footer class="mt-8 text-center text-secondary text-sm">\n' +
-        '            <p>© 2024 网盘解析工具 | 支持多种网盘解析</p>\n' +
+        '            <p>© 2026 网盘解析 | 支持多种网盘解析</p>\n' +
         '        </footer>\n' +
         '    </div>\n' +
         '\n' +

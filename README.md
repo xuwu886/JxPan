@@ -1,10 +1,12 @@
-[!\[Stars\](https://img.shields.io/github/stars/ByLsPro/JxPan?style=flat-square\&logo=github null)](https://github.com/ByLsPro/JxPan/stargazers)
-[!\[Forks\](https://img.shields.io/github/forks/ByLsPro/JxPan?style=flat-square\&logo=github null)](https://github.com/ByLsPro/JxPan/network/members)
-[!\[License\](https://img.shields.io/github/license/ByLsPro/JxPan?style=flat-square null)](https://github.com/ByLsPro/JxPan/blob/main/LICENSE)
+[![Stars](https://img.shields.io/github/stars/ByLsPro/JxPan?style=flat-square&logo=github)](https://github.com/ByLsPro/JxPan/stargazers)
+[![Forks](https://img.shields.io/github/forks/ByLsPro/JxPan?style=flat-square&logo=github)](https://github.com/ByLsPro/JxPan/network/members)
+[![License](https://img.shields.io/github/license/ByLsPro/JxPan?style=flat-square)](https://github.com/ByLsPro/JxPan/blob/main/LICENSE)
 
 ## ⭐ 项目热度
 
-[!\[Stargazers over time\](https://starchart.cc/ByLsPro/JxPan.svg?variant=adaptive null)](https://starchart.cc/ByLsPro/JxPan)
+[![Stargazers over time](https://starchart.cc/ByLsPro/JxPan.svg?variant=adaptive)](https://starchart.cc/ByLsPro/JxPan)
+
+---
 
 ***
 

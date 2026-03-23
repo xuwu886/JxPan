@@ -1,18 +1,18 @@
-[![Stars](https://img.shields.io/github/stars/ByLsPro/JxPan?style=flat-square&logo=github)](https://github.com/ByLsPro/JxPan/stargazers)
-[![Forks](https://img.shields.io/github/forks/ByLsPro/JxPan?style=flat-square&logo=github)](https://github.com/ByLsPro/JxPan/network/members)
-[![License](https://img.shields.io/github/license/ByLsPro/JxPan?style=flat-square)](https://github.com/ByLsPro/JxPan/blob/main/LICENSE)
+[!\[Stars\](https://img.shields.io/github/stars/ByLsPro/JxPan?style=flat-square\&logo=github null)](https://github.com/ByLsPro/JxPan/stargazers)
+[!\[Forks\](https://img.shields.io/github/forks/ByLsPro/JxPan?style=flat-square\&logo=github null)](https://github.com/ByLsPro/JxPan/network/members)
+[!\[License\](https://img.shields.io/github/license/ByLsPro/JxPan?style=flat-square null)](https://github.com/ByLsPro/JxPan/blob/main/LICENSE)
 
 ## ⭐ 项目热度
 
-[![Stargazers over time](https://starchart.cc/ByLsPro/JxPan.svg?variant=adaptive)](https://starchart.cc/ByLsPro/JxPan)
+[!\[Stargazers over time\](https://starchart.cc/ByLsPro/JxPan.svg?variant=adaptive null)](https://starchart.cc/ByLsPro/JxPan)
 
----
+***
 
 ## 📖 项目简介
 
 **JxPan** 是一个基于 Cloudflare Workers 平台的网盘直链解析工具。它能够解析主流网盘分享链接，提取文件真实下载地址，并通过 JSON 格式输出或 302 重定向直接下载，有效绕过网盘客户端限制。
 
-- 🖥️ **Demo 演示站点**：[https://jx.fsapk.xx.kg](https://jx.fsapk.xx.kg)
+- 🖥️ **Demo 演示站点**：<https://jx.fsapk.xx.kg>
 
 ### ✨ 核心特性
 
@@ -24,23 +24,23 @@
 - 🌍 **全球访问**：自动选择最优节点，无视地域限制
 - 📊 **统计功能**：记录解析次数、成功/失败次数、缓存命中次数
 
----
-
+***
 
 ## 🚀 支持平台
 
-| 平台 | 域名 | 状态 |
-|------|------|------|
-| 阿里云盘 | alipan.com / aliyundrive.com | ✅ 已支持 |
-| 夸克网盘 | pan.quark.cn | ✅ 已支持 |
-| UC网盘 | drive.uc.cn / fast.uc.cn | ✅ 已支持 |
-| 移动云盘 | yun.139.com / caiyun.139.com | ✅ 已支持 |
-| 小飞机网盘 | feijipan.com | ✅ 已支持 |
-| 蓝奏云优享版 | ilanzou.com | ✅ 已支持 |
-| 蓝奏云 | lanzou*.com | ✅ 已支持 |
+| 平台     | 域名                           | 状态    |
+| ------ | ---------------------------- | ----- |
+| 阿里云盘   | alipan.com / aliyundrive.com | ✅ 已支持 |
+| 夸克网盘   | pan.quark.cn                 | ✅ 已支持 |
+| UC网盘   | drive.uc.cn / fast.uc.cn     | ✅ 已支持 |
+| 移动云盘   | yun.139.com / caiyun.139.com | ✅ 已支持 |
+| 小飞机网盘  | feijipan.com                 | ✅ 已支持 |
+| 蓝奏云优享版 | ilanzou.com                  | ✅ 已支持 |
+| 蓝奏云    | lanzou\*.com                 | ✅ 已支持 |
 
 > **注意**：阿里云盘、夸克网盘、UC网盘、移动云盘需要配置认证信息才能正常解析
----
+
+***
 
 ## 💡 快速部署
 
@@ -53,7 +53,7 @@
 
 #### 2. 上传代码
 
-1. 进入 Worker 编辑页面，点击 "快速编辑"
+1. 进入 Worker 编辑页面，点击 "编辑代码"
 2. 将 `_worker.js` 的完整代码粘贴到编辑器中
 3. 点击 "保存并部署"
 
@@ -61,14 +61,15 @@
 
 对于需要认证的网盘，需要配置以下环境变量：
 
-| 变量名 | 说明 | 适用平台 |
-|--------|------|----------|
+| 变量名                    | 说明                        | 适用平台 |
+| ---------------------- | ------------------------- | ---- |
 | `ALIYUN_AUTHORIZATION` | 阿里云盘的 Authorization Token | 阿里云盘 |
-| `QK_COOKIE` | 夸克网盘的 Cookie | 夸克网盘 |
-| `UC_COOKIE` | UC网盘的 Cookie | UC网盘 |
+| `QK_COOKIE`            | 夸克网盘的 Cookie              | 夸克网盘 |
+| `UC_COOKIE`            | UC网盘的 Cookie              | UC网盘 |
 | `MCLOUD_AUTHORIZATION` | 移动云盘的 Authorization Token | 移动云盘 |
 
 配置方法：
+
 1. 在 Worker 页面点击 "设置" → "变量"
 2. 点击 "添加变量"，输入变量名和值
 3. 点击 "保存"
@@ -77,27 +78,43 @@
 
 为了启用缓存机制和统计功能，需要配置 KV 存储：
 
-0. 在 Cloudflare Dashboard 中，进入 "储存与数据库" → "Workers KV"
-1. 进入界面后在右上角“创建实例”，并输入"jx"作为命名空间名称
-2. 在 Cloudflare Dashboard 中，进入 "Workers & Pages" → "KV"
-3. 点击 "创建命名空间"，输入名称（如 `jx`）
-4. 回到 Worker 页面，点击 "设置" → "KV 命名空间绑定"
-5. 点击 "添加绑定"
-6. 变量名称填写 `jx`，选择刚刚创建的 KV 命名空间
-7. 点击 "添加绑定"
+1. 在 Cloudflare Dashboard 中，进入 "储存与数据库" → "Workers KV"
+2. 进入界面后在右上角“创建实例”，并输入"jx"作为命名空间名称
+3. 在 Cloudflare Dashboard 中，进入 "Workers & Pages" → "KV"
+4. 点击 "创建命名空间"，输入名称（如 `jx`）
+5. 回到 Worker 页面，点击 "设置" → "KV 命名空间绑定"
+6. 点击 "添加绑定"
+7. 变量名称填写 `jx`，选择刚刚创建的 KV 命名空间
+8. 点击 "添加绑定"
 
-#### 5. 绑定自定义域（推荐）
+### 5. 绑定自定义域（推荐）
 
 1. 在 "触发器" 选项卡点击 "添加自定义域"
 2. 输入您的域名（如 `pan.yourdomain.com`），点击 "添加自定义域"
 3. 按提示完成 DNS 解析，等待证书生效
 
-#### 6. 访问测试
+### 6. 配置后台管理面板（可选）
+
+为了启用后台管理面板，需要配置以下环境变量：
+
+| 变量名     | 说明      |
+| ------- | ------- |
+| `admin` | 后台登录用户名 |
+| `pass`  | 后台登录密码  |
+
+配置方法：
+
+1. 在 Worker 页面点击 "设置" → "变量"
+2. 点击 "添加变量"，输入变量名和值
+3. 点击 "保存"
+
+### 7. 访问测试
 
 - 访问 `https://your-domain.com/` 查看使用说明
 - 访问 `https://your-domain.com/?url=分享链接` 进行解析测试
+- 访问 `https://your-domain.com/admin` 进入后台管理面板
 
----
+***
 
 ## 📚 API 使用文档
 
@@ -111,11 +128,11 @@ GET /?url={分享链接}&pwd={密码}&type=json
 
 **参数说明：**
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| url | string | ✅ | 网盘分享链接 |
-| pwd | string | ❌ | 分享密码（如有） |
-| type | string | ❌ | 返回类型 |
+| 参数   | 类型     | 必填 | 说明       |
+| ---- | ------ | -- | -------- |
+| url  | string | ✅  | 网盘分享链接   |
+| pwd  | string | ❌  | 分享密码（如有） |
+| type | string | ❌  | 返回类型     |
 
 **返回示例：**
 
@@ -154,6 +171,7 @@ GET /?url={分享链接}&pwd={密码}&type=down
 ```
 
 **说明：**
+
 - 对于阿里云盘、夸克网盘、UC网盘、移动云盘等需要特殊请求头的网盘
 - 代理下载会携带必要的请求头（如：Cookie、Referer、X-CToken、Authorization 等）
 
@@ -180,66 +198,119 @@ GET /?action=get_stats
 ```
 
 **字段说明：**
+
 - `total`：解析总数
 - `success`：成功次数
 - `failed`：失败次数
 - `cached`：缓存命中次数
 
----
+#### 5. 获取解析记录
+
+```
+GET /?action=get_records
+```
+
+**返回示例：**
+
+```json
+{
+  "code": 200,
+  "msg": "获取解析记录成功",
+  "success": true,
+  "data": {
+    "success": [
+      {
+        "id": 1678901234567,
+        "url": "https://lanzoux.com/xxxxxx",
+        "pwd": "1234",
+        "success": true,
+        "code": 200,
+        "msg": "解析成功",
+        "data": {
+          "file_name": "example.zip",
+          "file_size": "10.00 MB",
+          "download_url": "https://..."
+        },
+        "timestamp": "2024-03-01T12:00:00Z"
+      }
+    ],
+    "failed": [
+      {
+        "id": 1678901234568,
+        "url": "https://lanzoux.com/yyyyyy",
+        "pwd": "",
+        "success": false,
+        "code": 404,
+        "msg": "链接不存在",
+        "data": null,
+        "timestamp": "2024-03-01T12:01:00Z"
+      }
+    ]
+  }
+}
+```
+
+***
 
 ## ⚙️ 配置说明
 
 ### 环境变量配置
 
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `ALIYUN_ENABLED` | true | 是否启用阿里云盘解析 |
-| `ALIYUN_AUTHORIZATION` | - | 阿里云盘 Authorization Token |
-| `ALIYUN_USER_AGENT` | - | 阿里云盘自定义 UA |
-| `QK_ENABLED` | true | 是否启用夸克网盘解析 |
-| `QK_COOKIE` | - | 夸克网盘 Cookie |
-| `QK_USER_AGENT` | - | 夸克网盘自定义 UA |
-| `UC_ENABLED` | true | 是否启用 UC 网盘解析 |
-| `UC_COOKIE` | - | UC 网盘 Cookie |
-| `UC_USER_AGENT` | - | UC 网盘自定义 UA |
-| `MCLOUD_ENABLED` | true | 是否启用移动云盘解析 |
-| `MCLOUD_AUTHORIZATION` | - | 移动云盘 Authorization Token |
-| `MCLOUD_USER_AGENT` | - | 移动云盘自定义 UA |
-| `AUTO_SWITCH` | true | 自动切换平台 UA |
-| `MODE` | pc | 解析模式 |
-| `REDIRECT_URL` | false | 是否默认使用 302 重定向 |
+| 变量名                    | 默认值   | 说明                       |
+| ---------------------- | ----- | ------------------------ |
+| `ALIYUN_ENABLED`       | true  | 是否启用阿里云盘解析               |
+| `ALIYUN_AUTHORIZATION` | -     | 阿里云盘 Authorization Token |
+| `ALIYUN_USER_AGENT`    | -     | 阿里云盘自定义 UA               |
+| `QK_ENABLED`           | true  | 是否启用夸克网盘解析               |
+| `QK_COOKIE`            | -     | 夸克网盘 Cookie              |
+| `QK_USER_AGENT`        | -     | 夸克网盘自定义 UA               |
+| `UC_ENABLED`           | true  | 是否启用 UC 网盘解析             |
+| `UC_COOKIE`            | -     | UC 网盘 Cookie             |
+| `UC_USER_AGENT`        | -     | UC 网盘自定义 UA              |
+| `MCLOUD_ENABLED`       | true  | 是否启用移动云盘解析               |
+| `MCLOUD_AUTHORIZATION` | -     | 移动云盘 Authorization Token |
+| `MCLOUD_USER_AGENT`    | -     | 移动云盘自定义 UA               |
+| `AUTO_SWITCH`          | true  | 自动切换平台 UA                |
+| `MODE`                 | pc    | 解析模式                     |
+| `REDIRECT_URL`         | false | 是否默认使用 302 重定向           |
+| `CACHE`                | false | 是否启用解析结果缓存               |
+| `CACHE_EXPIRED`        | 2000  | 缓存过期时间（秒）                |
+| `FOLDER_CACHE`         | false | 是否启用文件夹缓存                |
+| `admin`                | -     | 后台管理面板用户名                |
+| `pass`                 | -     | 后台管理面板密码                 |
 
 ### KV 存储配置
 
-| 绑定名称 | 说明 | 必需 |
-|----------|------|------|
+| 绑定名称    | 说明                    | 必需 |
+| ------- | --------------------- | -- |
 | `JxPan` | KV 命名空间绑定，用于存储缓存和统计数据 | 推荐 |
 
 ### 认证信息获取方法
 
 #### 阿里云盘
 
-1. 访问 https://www.alipan.com 并登录
+1. 访问 <https://www.alipan.com> 并登录
 2. 按 F12 打开开发者工具 → Network
 3. 刷新页面，找到任意 API 请求
 4. 复制请求头中的 `Authorization` 字段值（包含 Bearer）
 
 #### 夸克网盘
 
-1. 访问 https://pan.quark.cn 并登录
+1. 访问 <https://pan.quark.cn> 并登录
 2. 按 F12 打开开发者工具 → Network
 3. 刷新页面，找到任意 API 请求
 4. 复制请求头中的 `Cookie` 字段值
 
 #### UC网盘
 
-1. 访问 https://drive.uc.cn 并登录
+1. 访问 <https://drive.uc.cn> 并登录
 2. 访问任意分享链接
 3. 按 F12 打开开发者工具 → Network
 4. 找到 `share/sharepage/token` 或 `transfer_share/detail` 请求
 5. 复制请求头中的完整 `Cookie` 字符串
 
 **UC网盘 Cookie 必须包含以下字段：**
+
 - `__pus`
 - `__puus`
 - `UDRIVE_TRANSFER_SESS`
@@ -248,12 +319,12 @@ GET /?action=get_stats
 
 #### 移动云盘
 
-1. 访问 https://yun.139.com 并登录
+1. 访问 <https://yun.139.com> 并登录
 2. 按 F12 打开开发者工具 → Network
 3. 刷新页面，找到任意 API 请求
 4. 复制请求头中的 `Authorization` 字段值（包含 Basic）
 
----
+***
 
 ## 📝 使用示例
 
@@ -304,7 +375,7 @@ curl "https://your-domain.com/?url=https://yun.139.com/shareweb/#/w/i/xxxxxx&typ
 curl "https://your-domain.com/?url=https://lanzoux.com/xxxxxx"
 ```
 
----
+***
 
 ## 🔧 技术架构
 
@@ -340,8 +411,10 @@ curl "https://your-domain.com/?url=https://lanzoux.com/xxxxxx"
 - **KV Storage** - 使用 Cloudflare KV 存储缓存和统计数据
 - **Cache Mechanism** - 缓存解析结果，提高响应速度
 - **Statistics** - 记录和提供解析统计数据
+- **Admin Panel** - 后台管理面板，查看解析记录和统计数据
+- **Authentication** - 后台登录认证系统
 
----
+***
 
 ## ⚠️ 免责声明
 
@@ -361,13 +434,13 @@ curl "https://your-domain.com/?url=https://lanzoux.com/xxxxxx"
 
 下载的文件请在 24 小时内删除，不得用于商业用途或二次传播。
 
----
+***
 
 ## 📄 许可证
 
 本项目基于 [MIT License](LICENSE) 开源。
 
----
+***
 
 ## 🤝 贡献
 
@@ -382,7 +455,7 @@ curl "https://your-domain.com/?url=https://lanzoux.com/xxxxxx"
 3. 提供完整的测试用例
 4. 更新 README.md 文档
 
----
+***
 
 ## 📞 联系方式
 
@@ -390,7 +463,7 @@ curl "https://your-domain.com/?url=https://lanzoux.com/xxxxxx"
 
 - GitHub Issues: [提交问题](https://github.com/ByLsPro/JxPan/issues)
 
----
+***
 
 <p align="center">
   Made with ❤️ by <a href="https://github.com/ByLsPro">ByLsPro</a>

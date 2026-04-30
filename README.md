@@ -38,7 +38,7 @@
 | 阿里云盘   | alipan.com / aliyundrive.com | ✅ 已支持 | ✅ 支持 |
 | 夸克网盘   | pan.quark.cn                 | ✅ 已支持 | ✅ 支持 |
 | UC网盘   | drive.uc.cn / fast.uc.cn     | ✅ 已支持 | ✅ 支持 |
-| 移动云盘   | yun.139.com / caiyun.139.com | ✅ 已支持 | ✅ 支持 |
+| 移动云盘   | yun.139.com / caiyun.139.com | ✅ 已支持 | ❌ 不支持 |
 | 小飞机网盘  | feijipan.com                 | ✅ 已支持 | -       |
 | 蓝奏云优享版 | ilanzou.com                  | ✅ 已支持 | -       |
 | 蓝奏云    | lanzou\*.com                 | ✅ 已支持 | -       |
